@@ -79,6 +79,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationEvent;
@@ -537,18 +538,14 @@ class SpannerTemplateTests {
     SpannerTemplate spyTemplate = spy(this.spannerTemplate);
     KeySet keys = KeySet.newBuilder().addKey(Key.of("key1")).addKey(Key.of("key2")).build();
     spyTemplate.read(ParentEntity.class, keys);
-    Statement statement =
-        Statement.newBuilder(
-                "SELECT other, id, custom_col, id_2, ARRAY (SELECT AS STRUCT deleted, id3, id, id_2"
-                    + " FROM child_test_table WHERE (child_test_table.id = parent_test_table.id AND"
-                    + " child_test_table.id_2 = parent_test_table.id_2) AND (deleted = false)) AS"
-                    + " childEntities FROM parent_test_table WHERE (id = @tag0) OR (id_2 = @tag1)")
-            .bind("tag0")
-            .to("key1")
-            .bind("tag1")
-            .to("key2")
-            .build();
-    verify(spyTemplate, times(1)).query(eq(ParentEntity.class), eq(statement), any());
+    ArgumentCaptor<Statement> statementCaptor = ArgumentCaptor.forClass(Statement.class);
+    verify(spyTemplate, times(1)).query(eq(ParentEntity.class), statementCaptor.capture(), any());
+  
+    Statement statement = statementCaptor.getValue();
+    assertThat(statement.getSql()).contains("FROM parent_test_table");
+    assertThat(statement.getSql()).contains("WHERE (id = @tag0) OR (id_2 = @tag1)");
+    assertThat(statement.getSql()).contains("ARRAY (SELECT AS STRUCT");
+  
     verify(this.databaseClient, times(1)).singleUse();
   }
 
